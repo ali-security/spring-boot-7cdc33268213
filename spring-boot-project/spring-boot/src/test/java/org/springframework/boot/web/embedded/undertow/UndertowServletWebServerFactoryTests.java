@@ -40,6 +40,7 @@ import org.apache.http.HttpResponse;
 import org.apache.jasper.servlet.JspServlet;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
@@ -258,6 +259,7 @@ class UndertowServletWebServerFactoryTests extends AbstractServletWebServerFacto
 	}
 
 	@Test
+	@Disabled("Current JDK security policy disables TLS_RSA_* cipher suites, so the handshake is refused")
 	void sslRestrictedProtocolsRSATLS12Success() throws Exception {
 		testRestrictedSSLProtocolsAndCipherSuites(new String[] { "TLSv1.2" },
 				new String[] { "TLS_RSA_WITH_AES_128_CBC_SHA256" });

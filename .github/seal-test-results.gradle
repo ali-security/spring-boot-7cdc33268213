@@ -1,0 +1,24 @@
+// Init script used by .github/workflows/seal-build.yml (sealed build).
+// Makes Gradle print per-test failures/skips and a per-task test summary so the
+// job log states how many tests ran, passed, failed and were skipped.
+allprojects {
+	tasks.withType(Test).configureEach { t ->
+		t.outputs.upToDateWhen { false }
+		t.outputs.cacheIf { false }
+		t.filter.failOnNoMatchingTests = false
+		t.testLogging {
+			events "failed"
+			exceptionFormat "full"
+		}
+		t.afterTest { desc, result ->
+			if (result.resultType == TestResult.ResultType.FAILURE) {
+				println "FAILED TEST: ${desc.className}#${desc.name} (${t.path})"
+			}
+		}
+		t.afterSuite { desc, result ->
+			if (desc.parent == null) {
+				println "TEST SUMMARY ${t.path}: tests: ${result.testCount}, passed: ${result.successfulTestCount}, failed: ${result.failedTestCount}, skipped: ${result.skippedTestCount}, result: ${result.resultType}"
+			}
+		}
+	}
+}

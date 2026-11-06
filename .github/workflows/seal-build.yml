@@ -1,0 +1,88 @@
+name: Seal Build
+
+# Sealed-build workflow. Upstream Spring Boot 2.3.x builds on Concourse
+# (ci/pipeline.yml: `build` on JDK 8, `jdk11-build`, `jdk15-build`, `windows-build`
+# on JDK 8, all running ci/scripts/build-project.sh -> ./gradlew build) and ships no
+# GitHub Actions build/test workflow. This mirrors that matrix, scoped to the
+# spring-boot core module (the published artifact) plus the actuator-autoconfigure
+# security tests that cover EndpointRequest.
+on:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Optional test selector(s) (space/comma separated) passed to Gradle --tests"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / JDK ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            java: "8"
+            distribution: temurin
+            release: true
+          - os: ubuntu-latest
+            java: "11"
+            distribution: temurin
+            release: false
+          - os: ubuntu-latest
+            java: "15"
+            distribution: zulu
+            release: false
+          - os: windows-latest
+            java: "8"
+            distribution: temurin
+            release: false
+    env:
+      CI: "true"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.java }}
+          cache: gradle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build jar and run tests
+        run: |
+          GRADLE="./gradlew -Dorg.gradle.internal.launcher.welcomeMessageEnabled=false --no-daemon --max-workers=4 --no-scan --console=plain -I .github/seal-test-results.gradle"
+          F="${{ inputs.test-filter }}"
+          if [ -n "$F" ]; then
+            ARGS=""
+            for t in ${F//,/ }; do ARGS="$ARGS --tests $t"; done
+            $GRADLE :spring-boot-project:spring-boot:jar \
+              :spring-boot-project:spring-boot:test $ARGS \
+              :spring-boot-project:spring-boot-actuator-autoconfigure:test $ARGS
+          else
+            $GRADLE :spring-boot-project:spring-boot:jar \
+              :spring-boot-project:spring-boot:test \
+              :spring-boot-project:spring-boot-actuator-autoconfigure:test \
+              --tests 'org.springframework.boot.actuate.autoconfigure.security.*'
+          fi
+      - name: Test report
+        if: always()
+        run: |
+          python .github/seal-test-report.py \
+            spring-boot-project/spring-boot \
+            spring-boot-project/spring-boot-actuator-autoconfigure
+      - name: Upload jar
+        if: matrix.release
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring-boot-jar
+          path: spring-boot-project/spring-boot/build/libs/spring-boot-2.3.8.RELEASE.jar
+          if-no-files-found: error
